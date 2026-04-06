@@ -138,13 +138,12 @@ auto-ppt-generator/
 - 🤖 Agent-based architecture (not script-based)  
 - 🔌 True MCP integration (client + server separation)  
 - 🧠 Intelligent slide planning  
-- 📊 Auto-generated structured slides  
-- 🖼️ Image integration  
+- 📊 Auto-generated structured slides    
 - 🎯 Dynamic slide count (user-defined)  
 - 🎨 Clean UI (Streamlit)  
 - 📁 Organized file output  
 
 ---
 ## ⚡ Demo Video link 
-https://drive.google.com/file/d/15m4SgfpkUONrqjNVuS91ZGxsuP4765OW/view?usp=drive_link
+https://drive.google.com/file/d/1exNgSSXihUthJPxsnsyv7BmJOL1ouqRK/view?usp=drive_link
 
