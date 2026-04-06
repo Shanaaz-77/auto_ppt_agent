@@ -1,196 +1,231 @@
-import os
-import asyncio
-import glob
-import threading
+"""
+app.py — Auto PPT Generator
+Streamlit frontend for the Auto-PPT Agent.
 
+Flow: UI → run_ppt_agent (agent.py) → MCP Client → MCP Server → .pptx
+"""
+
+import os
+import glob
+import asyncio
 import streamlit as st
 from agent import run_ppt_agent
 
-# ── Page config ───────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────
+#  PAGE CONFIG
+# ─────────────────────────────────────────
 st.set_page_config(
     page_title="Auto PPT Generator",
-    page_icon="📊",
+    page_icon="⚡",
     layout="centered",
+    initial_sidebar_state="collapsed",
 )
 
-# ── Minimal, safe CSS (no input colour overrides that break visibility) ───────
-st.markdown(
-    """
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-    html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+# ─────────────────────────────────────────
+#  STYLES
+# ─────────────────────────────────────────
+st.markdown("""
+<style>
+    /* ── Hide sidebar & Streamlit chrome ── */
+    [data-testid="stSidebar"]          { display: none !important; }
+    [data-testid="stDecoration"]       { display: none !important; }
+    #MainMenu, footer, header          { visibility: hidden; }
 
-    /* Soft dark page background */
-    .stApp { background: #1a1a2e; }
-
-    /* Card wrapper */
-    .card {
-        background: rgba(255,255,255,0.06);
-        border: 1px solid rgba(255,255,255,0.12);
-        border-radius: 18px;
-        padding: 2.5rem 2rem 2rem;
-        margin-top: 2rem;
+    /* ── Page background ── */
+    .stApp {
+        background-color: #f6f8fb;
     }
 
-    /* Gradient title */
-    .title {
-        font-size: 2.3rem;
-        font-weight: 700;
+    /* ── Center block ── */
+    .block-container {
+        max-width: 680px;
+        padding-top: 3.5rem;
+        padding-bottom: 3rem;
+    }
+
+    /* ── Card wrapper ── */
+    .card {
+        background: #ffffff;
+        border-radius: 20px;
+        padding: 2.5rem 2rem;
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.07);
+        margin-top: 1.5rem;
+    }
+
+    /* ── Header ── */
+    .main-title {
         text-align: center;
-        background: linear-gradient(90deg,#a78bfa,#60a5fa,#34d399);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        margin-bottom: .25rem;
+        font-size: 2.4rem;
+        font-weight: 800;
+        color: #1a1a2e;
+        letter-spacing: -0.5px;
+        margin-bottom: 0.3rem;
     }
     .subtitle {
         text-align: center;
-        color: rgba(255,255,255,.45);
-        font-size: .92rem;
-        margin-bottom: 1.8rem;
+        font-size: 1.05rem;
+        color: #6b7280;
+        margin-bottom: 0;
     }
 
-    /* Label colour */
-    label { color: rgba(255,255,255,.75) !important; }
+    /* ── Text input ── */
+    .stTextInput > div > div > input {
+        background-color: #ffffff !important;
+        border-radius: 12px !important;
+        border: 1.5px solid #e5e7eb !important;
+        padding: 0.75rem 1rem !important;
+        font-size: 0.97rem !important;
+        color: #1a1a2e !important;
+        box-shadow: none !important;
+    }
+    .stTextInput > div > div > input:focus {
+        border-color: #4f46e5 !important;
+        box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12) !important;
+    }
+    .stTextInput label {
+        font-weight: 600;
+        color: #374151;
+        font-size: 0.95rem;
+    }
 
-    /* Generate button */
-    div.stButton > button {
-        background: linear-gradient(90deg,#7c3aed,#4f46e5) !important;
-        color: #fff !important;
+    /* ── Primary button ── */
+    div[data-testid="stButton"] > button {
+        width: 100%;
+        background: linear-gradient(135deg, #4f46e5, #7c3aed) !important;
+        color: white !important;
         border: none !important;
         border-radius: 12px !important;
-        padding: .7rem 1.5rem !important;
+        padding: 0.75rem 1.5rem !important;
         font-size: 1rem !important;
         font-weight: 600 !important;
-        width: 100% !important;
-        transition: opacity .2s, transform .15s !important;
+        letter-spacing: 0.3px !important;
+        cursor: pointer !important;
+        transition: opacity 0.2s ease, transform 0.1s ease !important;
+        box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3) !important;
     }
-    div.stButton > button:hover {
-        opacity: .85 !important;
+    div[data-testid="stButton"] > button:hover {
+        opacity: 0.92 !important;
         transform: translateY(-1px) !important;
     }
-
-    /* Download button */
-    div.stDownloadButton > button {
-        background: linear-gradient(90deg,#059669,#0d9488) !important;
-        color: #fff !important;
-        border: none !important;
-        border-radius: 12px !important;
-        padding: .7rem 1.5rem !important;
-        font-size: 1rem !important;
-        font-weight: 600 !important;
-        width: 100% !important;
+    div[data-testid="stButton"] > button:active {
+        transform: translateY(0px) !important;
     }
 
-    /* Hide Streamlit chrome */
-    #MainMenu, footer, header { visibility: hidden; }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+    /* ── Download button ── */
+    div[data-testid="stDownloadButton"] > button {
+        width: 100%;
+        background: #ffffff !important;
+        color: #4f46e5 !important;
+        border: 2px solid #4f46e5 !important;
+        border-radius: 12px !important;
+        padding: 0.65rem 1.5rem !important;
+        font-size: 0.97rem !important;
+        font-weight: 600 !important;
+        cursor: pointer !important;
+        transition: background 0.2s ease !important;
+    }
+    div[data-testid="stDownloadButton"] > button:hover {
+        background: #f0f0ff !important;
+    }
 
-# ── Session state ─────────────────────────────────────────────────────────────
-if "pptx_path" not in st.session_state:
-    st.session_state.pptx_path = None
-if "error_msg" not in st.session_state:
-    st.session_state.error_msg = None
+    /* ── Success / error alerts ── */
+    .stAlert {
+        border-radius: 12px !important;
+    }
 
-# ── Helper ────────────────────────────────────────────────────────────────────
+    /* ── Spinner text ── */
+    .stSpinner > div {
+        font-size: 0.95rem;
+        color: #6b7280;
+    }
 
-def _run_agent_in_thread(prompt: str, result: dict) -> None:
-    """
-    Target for a dedicated thread.
-    Creates a BRAND-NEW event loop — completely isolated from Streamlit's
-    tornado/asyncio infrastructure — then runs the agent to completion.
-    Any exception is stored in result['error'] for the main thread to raise.
-    """
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        loop.run_until_complete(run_ppt_agent(prompt))
-    except Exception as exc:
-        result["error"] = exc
-    finally:
-        loop.close()
+    /* ── Divider ── */
+    .divider {
+        border: none;
+        border-top: 1px solid #f0f0f5;
+        margin: 1.5rem 0;
+    }
+</style>
+""", unsafe_allow_html=True)
 
+# ─────────────────────────────────────────
+#  HEADER
+# ─────────────────────────────────────────
+st.markdown('<p class="main-title">⚡ Auto PPT Generator</p>', unsafe_allow_html=True)
+st.markdown('<p class="subtitle">Create presentations instantly — powered by AI & MCP</p>', unsafe_allow_html=True)
 
-def generate_presentation(prompt: str) -> str:
-    """Kick off the agent in a dedicated thread and return the new .pptx path."""
-    before = set(glob.glob(os.path.join("generated_ppts", "*.pptx")))
+st.markdown("<div style='height: 1.5rem'></div>", unsafe_allow_html=True)
 
-    result: dict = {"error": None}
-    thread = threading.Thread(target=_run_agent_in_thread, args=(prompt, result), daemon=True)
-    thread.start()
-    thread.join()  # block Streamlit until agent is done (spinner runs via st.spinner)
+# ─────────────────────────────────────────
+#  GROQ API KEY CHECK
+# ─────────────────────────────────────────
+if not os.getenv("GROQ_API_KEY"):
+    st.error(
+        "⚠️ **GROQ_API_KEY is not set.**\n\n"
+        "Please set it before running:\n"
+        "```\nset GROQ_API_KEY=your_key_here\n```"
+    )
+    st.stop()
 
-    # Re-raise any exception from the agent thread
-    if result["error"] is not None:
-        raise result["error"]
+# ─────────────────────────────────────────
+#  MAIN CARD
+# ─────────────────────────────────────────
+with st.container():
+    # Input
+    prompt = st.text_input(
+        "Enter your topic",
+        placeholder="e.g, Create a 5 slide presentation on Artificial Intelligence",
+    )
 
-    after = set(glob.glob(os.path.join("generated_ppts", "*.pptx")))
-    new = after - before
-    if new:
-        return new.pop()
+    st.markdown("<div style='height: 0.6rem'></div>", unsafe_allow_html=True)
 
-    # Fallback: most-recently modified file
-    files = glob.glob(os.path.join("generated_ppts", "*.pptx"))
-    return max(files, key=os.path.getmtime) if files else None
+    # Generate button
+    generate_clicked = st.button("⚡ Generate PPT", use_container_width=True)
 
-# ── UI ────────────────────────────────────────────────────────────────────────
-
-st.markdown('<div class="card">', unsafe_allow_html=True)
-
-st.markdown('<p class="title">📊 Auto PPT Generator</p>', unsafe_allow_html=True)
-st.markdown(
-    '<p class="subtitle">Describe your presentation — the AI agent builds it for you.</p>',
-    unsafe_allow_html=True,
-)
-
-# Prompt input — plain Streamlit widget, NO colour override so text is always visible
-prompt = st.text_area(
-    "Enter your prompt",
-    placeholder='e.g. "Create a 5-slide presentation on Artificial Intelligence"',
-    height=120,
-)
-
-if st.button("✨ Generate PPT", use_container_width=True):
-    # Reset previous result
-    st.session_state.pptx_path = None
-    st.session_state.error_msg = None
-
+# ─────────────────────────────────────────
+#  GENERATION LOGIC
+# ─────────────────────────────────────────
+if generate_clicked:
+    # Validate input
     if not prompt.strip():
-        st.session_state.error_msg = "⚠️ Please enter a prompt before generating."
-    else:
-        with st.spinner("🤖 Agent is working… this may take a minute or two."):
-            try:
-                path = generate_presentation(prompt.strip())
-                if path and os.path.exists(path):
-                    st.session_state.pptx_path = path
-                else:
-                    st.session_state.error_msg = (
-                        "⚠️ Agent finished but no .pptx file was found in generated_ppts/."
-                    )
-            except Exception as exc:
-                st.session_state.error_msg = f"❌ Something went wrong:\n\n{exc}"
+        st.error("⚠️ Please enter a topic before generating.")
+        st.stop()
 
-# ── Results (always rendered, driven by session state) ────────────────────────
+    # Snapshot existing files before generation
+    os.makedirs("generated_ppts", exist_ok=True)
+    before_files = set(glob.glob("generated_ppts/*.pptx"))
 
-if st.session_state.error_msg:
-    st.error(st.session_state.error_msg)
+    try:
+        with st.spinner("Generating your PPT..."):
+            asyncio.run(run_ppt_agent(prompt.strip()))
 
-if st.session_state.pptx_path:
-    fname = os.path.basename(st.session_state.pptx_path)
-    st.success(f"✅ Presentation ready: **{fname}**")
+        # Detect newly created file
+        after_files = set(glob.glob("generated_ppts/*.pptx"))
+        new_files = after_files - before_files
 
-    with open(st.session_state.pptx_path, "rb") as f:
-        st.download_button(
-            label="⬇️ Download Presentation",
-            data=f.read(),          # read all bytes before widget renders
-            file_name=fname,
-            mime=(
-                "application/vnd.openxmlformats-officedocument"
-                ".presentationml.presentation"
-            ),
-            use_container_width=True,
-        )
+        if new_files:
+            ppt_path = sorted(new_files, key=os.path.getmtime, reverse=True)[0]
+        else:
+            # Fallback: pick the most recently modified file
+            all_files = glob.glob("generated_ppts/*.pptx")
+            ppt_path = max(all_files, key=os.path.getmtime) if all_files else None
 
-st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("<div style='height: 0.8rem'></div>", unsafe_allow_html=True)
+        st.success("✅ Your PPT has been generated successfully!")
+
+        if ppt_path and os.path.exists(ppt_path):
+            with open(ppt_path, "rb") as f:
+                ppt_bytes = f.read()
+
+            st.markdown("<div style='height: 0.5rem'></div>", unsafe_allow_html=True)
+            st.download_button(
+                label="📥 Download PPT",
+                data=ppt_bytes,
+                file_name=os.path.basename(ppt_path),
+                mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            )
+        else:
+            st.warning("⚠️ Presentation was generated but the file could not be located.")
+
+    except Exception as e:
+        st.error(f"❌ Something went wrong: {str(e)}")
