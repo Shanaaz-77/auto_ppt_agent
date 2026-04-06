@@ -3,15 +3,15 @@ agent.py — Auto-PPT Agent (Fixed & Production-Ready)
 
 Flow:
   User Input
-  → clean topic
-  → launch ppt_mcp_server.py via stdio (sys.executable -m fastmcp run)
-  → Agentic ReAct loop (Plan → Create → AddSlides → WriteText → Save)
-  → .pptx saved to generated_ppts/
+  - clean topic
+  - Agentic ReAct loop (Plan → Create → AddSlides → WriteText → Save)
+  - Post-process: apply dark-blue theme + white text styling
+  - .pptx saved to generated_ppts/
 
-Root-cause fixes applied:
-  1. MCP connection: uses sys.executable -m fastmcp run  (no PATH dependency)
-  2. server_path: uses os.path.abspath(__file__)          (no empty-dirname bug)
-  3. System prompt: fully rewritten for high-quality PPT output
+Fixes applied:
+  1. MCP connection: HTTP transport to already-running ppt_mcp_server.py
+  2. Title extraction: strips filler phrases from user input
+  3. Styling: post-processes saved .pptx with python-pptx for consistent look
   4. Max-iteration guard: prevents infinite loops
   5. Fallback save: guarantees a file is always written
 """
@@ -25,6 +25,11 @@ import asyncio
 from groq import Groq
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
+
+# python-pptx styling imports
+from pptx import Presentation
+from pptx.util import Pt
+from pptx.dml.color import RGBColor
 
 # ──────────────────────────────────────────────
 #  CLIENT SETUP
@@ -57,13 +62,15 @@ STEP 1 ── PLAN (output as plain text BEFORE any tool call)
 
 STEP 2 ── Call create_presentation()
 
-STEP 3 ── TITLE SLIDE
+STEP 3 ── TITLE SLIDE   STRICT RULES BELOW
   Call add_slide()                      → returns slide_index (0)
   Call write_text(
       slide_index = 0,
       title       = "[Clean topic name — see rules below]",
-      bullets     = ["[One compelling subtitle sentence, 10–15 words]"]
+      bullets     = []   ← EMPTY LIST — NO bullets on the title slide EVER
   )
+   The title slide MUST have bullets=[] (empty list). Never put text in bullets
+     for slide index 0. This is non-negotiable.
 
 STEP 4 ── CONTENT SLIDES  (repeat for every planned slide)
   Call add_slide()                      → returns slide_index N
@@ -87,15 +94,19 @@ TITLE SLIDE RULES
     "create slides on"        → remove
     "generate a ppt on"       → remove
 • Title must be ONLY the topic name, properly capitalized.
+• bullets MUST be [] (empty) for slide_index 0 — NO subtitle or text at all.
 
   ✔  Input : "create a ppt on Machine Learning"
      Title : "Machine Learning"
+     bullets: []
 
   ✔  Input : "make a 5 slide deck on the Solar System"
      Title : "The Solar System"
+     bullets: []
 
   ✗  NEVER write: "Create a PPT on Machine Learning"
   ✗  NEVER write: "Presentation on Machine Learning"
+  ✗  NEVER add bullets to slide_index 0
 
 ═══════════════════════════════════════════════════════
 SLIDE TITLE RULES
@@ -202,6 +213,90 @@ def safe_filename(topic: str) -> str:
     name = re.sub(r"[^\w\s-]", "", topic).strip().lower()
     name = re.sub(r"[\s-]+", "_", name)
     return f"{name}_presentation.pptx"
+
+
+# ──────────────────────────────────────────────
+#  STYLING POST-PROCESSOR
+# ──────────────────────────────────────────────
+
+# Theme colours
+_BG_COLOR   = RGBColor(0x03, 0x25, 0x6C)   # #03256C dark blue
+_TEXT_WHITE = RGBColor(0xFF, 0xFF, 0xFF)   # white
+_TITLE_PT   = Pt(35)
+_BULLET_PT  = Pt(15)
+
+
+def _set_slide_background(slide, color: RGBColor) -> None:
+    """Fill an entire slide background with a solid RGB color."""
+    background = slide.background
+    fill = background.fill
+    fill.solid()
+    fill.fore_color.rgb = color
+
+
+def _style_text_frame(tf, font_size: Pt, bold: bool = False) -> None:
+    """Apply font size, bold, and white colour to every run in a text frame."""
+    for para in tf.paragraphs:
+        for run in para.runs:
+            run.font.size  = font_size
+            run.font.bold  = bold
+            run.font.color.rgb = _TEXT_WHITE
+        # Also set paragraph-level font so placeholder default is overridden
+        para.font.size  = font_size
+        para.font.bold  = bold
+        para.font.color.rgb = _TEXT_WHITE
+
+
+def post_process_presentation(filepath: str) -> None:
+    """
+    Open the saved .pptx, apply the brand theme to every slide, and re-save.
+
+    Theme applied:
+      • Background  : #03256C (dark blue)
+      • Title text  : white, 35 pt, bold
+      • Bullet text : white, 15 pt
+      • Slide 0     : title-only — content placeholder is cleared / hidden
+    """
+    if not os.path.isfile(filepath):
+        print(f"[Style] File not found, skipping: {filepath}")
+        return
+
+    try:
+        prs = Presentation(filepath)
+
+        for idx, slide in enumerate(prs.slides):
+            # ── Background ──────────────────────────────────
+            _set_slide_background(slide, _BG_COLOR)
+
+            # ── Title placeholder ────────────────────────────
+            title_ph = slide.shapes.title
+            if title_ph and title_ph.has_text_frame:
+                _style_text_frame(title_ph.text_frame, _TITLE_PT, bold=True)
+
+            # ── Content placeholder (bullets) ───────────────
+            # Placeholder index 1 is 'Content' in python-pptx layouts
+            content_ph = None
+            for shape in slide.placeholders:
+                if shape.placeholder_format.idx == 1:
+                    content_ph = shape
+                    break
+
+            if idx == 0:
+                # Title slide: clear any text the LLM mistakenly added
+                if content_ph and content_ph.has_text_frame:
+                    content_ph.text_frame.clear()
+                    # Make the placeholder text invisible (empty string)
+                    content_ph.text_frame.text = ""
+            else:
+                # Content slides: style bullet text
+                if content_ph and content_ph.has_text_frame:
+                    _style_text_frame(content_ph.text_frame, _BULLET_PT, bold=False)
+
+        prs.save(filepath)
+        print(f"[Style] ✅ Styling applied → {filepath}")
+
+    except Exception as style_err:
+        print(f"[Style]   Post-processing failed (presentation still saved): {style_err}")
 
 
 # ──────────────────────────────────────────────
@@ -365,9 +460,30 @@ async def run_ppt_agent(user_request: str) -> str:
                             and "saved at" in result_text.lower()
                         ):
                             save_called = True
+
+                            # ── Apply brand styling post-save ──────────
+                            saved_path = func_args.get("filename", "")
+                            # result_text may contain the absolute path
+                            # e.g. "Presentation saved at: C:\...\file.pptx"
+                            abs_match = re.search(
+                                r"saved at:\s*(.+\.pptx)",
+                                result_text,
+                                re.IGNORECASE,
+                            )
+                            if abs_match:
+                                saved_path = abs_match.group(1).strip()
+
+                            if saved_path and os.path.isfile(saved_path):
+                                post_process_presentation(saved_path)
+                            elif saved_path:
+                                # Try relative path resolution
+                                alt = os.path.abspath(saved_path)
+                                if os.path.isfile(alt):
+                                    post_process_presentation(alt)
+
                             print(f"└─\n")
                             print(f"{'='*55}")
-                            print(f"  ✅ SUCCESS — Presentation saved!")
+                            print(f"  ✅ SUCCESS — Presentation saved & styled!")
                             print(f"  Path: {func_args['filename']}")
                             print(f"{'='*55}\n")
                             return result_text
@@ -426,6 +542,15 @@ async def run_ppt_agent(user_request: str) -> str:
                     )
                     fb_text = result.content[0].text if result.content else "Done"
                     print(f"[FALLBACK] {fb_text}")
+                    # Apply styling on fallback save too
+                    if "saved at" in fb_text.lower():
+                        abs_m = re.search(
+                            r"saved at:\s*(.+\.pptx)", fb_text, re.IGNORECASE
+                        )
+                        if abs_m:
+                            post_process_presentation(abs_m.group(1).strip())
+                        elif os.path.isfile(fallback_path):
+                            post_process_presentation(fallback_path)
                     return fb_text
                 except Exception as fb_err:
                     msg_out = f"Fallback save failed: {fb_err}"
