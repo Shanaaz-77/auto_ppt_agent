@@ -146,10 +146,3 @@ auto-ppt-generator/
 
 ---
 
-## 🛠️ Installation
-
-### 1. Clone Repository
-
-```bash
-git clone https://github.com/Shanaaz-77/auto-ppt-generator.git
-cd auto-ppt-generator
