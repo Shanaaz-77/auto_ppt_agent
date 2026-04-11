@@ -121,14 +121,7 @@ A clean and minimal UI that allows users to:
 ## 📁 File Structure
 
 
-auto-ppt-generator/
-│
-├── agent.py # AI Agent (MCP client + logic)
-├── ppt_mcp_server.py # MCP Server (tools)
-├── app.py # Streamlit frontend
-├── generated_ppts/ # Output PPT files
-├── requirements.txt
-└── README.md
+auto-ppt-generator/ │ ├── agent.py # AI Agent (MCP client + logic) ├── ppt_mcp_server.py # MCP Server (tools) ├── app.py # Streamlit frontend ├── generated_ppts/ # Output PPT files ├── requirements.txt └── README.md
 
 
 ---
