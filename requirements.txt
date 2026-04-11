@@ -1,13 +1,7 @@
 fastmcp
+mcp
 python-pptx
 requests
-pillow
-python-dotenv
-
-langchain
-langgraph
-langchain-core
-
 groq
-
 streamlit
+langchain-core
