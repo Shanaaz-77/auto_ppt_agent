@@ -144,6 +144,6 @@ auto-ppt-generator/
 - 📁 Organized file output  
 
 ---
-## ⚡ Demo Video link 
-https://drive.google.com/file/d/1exNgSSXihUthJPxsnsyv7BmJOL1ouqRK/view?usp=drive_link
+## 🎥 Demo Video link 
+https://drive.google.com/file/d/15PmQyKpPQojyT4kpPZyFKrPUUv6dNvFs/view?usp=drive_link
 
