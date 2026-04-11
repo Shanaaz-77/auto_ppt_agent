@@ -37,11 +37,6 @@ import asyncio
 from groq import Groq
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
-
-# ── LangChain message schema (minimal, safe integration) ──────────────────────
-# LangChain is used ONLY for structured message objects (HumanMessage /
-# SystemMessage).  The actual LLM call is still handled by the Groq client.
-# This satisfies the LangChain requirement without rewriting any agent logic.
 from langchain_core.messages import HumanMessage, SystemMessage
 
 # python-pptx styling imports
@@ -201,8 +196,8 @@ TITLE SLIDE RULES
 • NEVER write the raw user prompt as the title.
 
   ✔  title = "{topic}",  bullets = []
-  ✗  title = "Create a ppt on {topic}"       ← WRONG
-  ✗  title = "Presentation about {topic}"    ← WRONG
+  ✗  title = "Create a ppt on {topic}"       - WRONG
+  ✗  title = "Presentation about {topic}"    - WRONG
 
 ═══════════════════════════════════════════════════════
 SLIDE TITLE RULES  (content slides)
